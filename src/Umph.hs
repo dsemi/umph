@@ -13,6 +13,13 @@ import Formatting
 import Network.HTTP.Conduit
 import System.Environment
 
+data Arguments = Args { type' :: Char
+                      , id' :: String
+                      } deriving (Show)
+
+setType (Args _ i) t = Args t i
+setId   (Args t _) i = Args t i 
+
 newtype Link = Link String
 
 data Page = Page { nextPageToken :: Maybe String
@@ -42,8 +49,6 @@ instance FromJSON UserPage where
 playlistUrl   = "https://www.googleapis.com/youtube/v3/playlistItems?key=" % string % "&part=contentDetails&playlistId=" % string % "&maxResults=" % int
 uploadUrl     = "https://www.googleapis.com/youtube/v3/channels?key=" % string % "&part=contentDetails&forUsername=" % string
 videoUrl      = "https://www.youtube.com/watch?v=" % string
-testPlaylist = "PL_XqGBfpM20gxIT0C3gA68eVe-LS7iFrC"
-testUsername = "birgirpall"
 
 downloadPage url = lift (decode <$> simpleHttp url) >>= MaybeT . return
 
@@ -65,10 +70,16 @@ downloadUserUploads username maxResults = do
 printLinks :: Maybe Page -> IO ()
 printLinks = maybe (return ()) (mapM_ print . entries)
 
--- Just need to argparse
+parseArgs da (a:b:args) 
+    | a == "-t" && (b == "p" || b == "u") = parseArgs (setType da $ head b) args
+    | a == "-tu" || a == "-tp"            = parseArgs (setType da $ last a) $ b : args
+parseArgs da (a:args) = parseArgs (setId da a) args
+parseArgs da [] = da
 
 main = do
-  mPage <- runMaybeT $ downloadPlaylist testPlaylist 50
-  printLinks mPage
-  uPage <- runMaybeT $ downloadUserUploads testUsername 50
-  printLinks uPage
+  args <- parseArgs (Args 'p' "") <$> getArgs
+  page <- runMaybeT $ case args of
+                        (Args 'p' pId) -> downloadPlaylist pId 50
+                        (Args 'u' uId) -> downloadUserUploads uId 50
+                        _              -> undefined
+  printLinks page
